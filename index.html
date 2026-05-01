@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VIDP Visibility Forecaster</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #050a14;
+    --surface: #0c1627;
+    --card: #111d33;
+    --border: #1e3a5f;
+    --teal: #00d4b8;
+    --blue: #0ea5e9;
+    --amber: #f59e0b;
+    --red: #ef4444;
+    --green: #10b981;
+    --text: #e2eaf6;
+    --muted: #5a7a9a;
+    --font-mono: 'Space Mono', monospace;
+    --font-display: 'Syne', sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-display);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(0,212,184,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,212,184,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none; z-index: 0;
+  }
+  body::after {
+    content: '';
+    position: fixed; top: -200px; left: -200px;
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(0,212,184,0.06) 0%, transparent 70%);
+    pointer-events: none; z-index: 0;
+    animation: drift 15s ease-in-out infinite alternate;
+  }
+  @keyframes drift { from{transform:translate(0,0)} to{transform:translate(300px,200px)} }
+  .orb2 {
+    position: fixed; bottom: -100px; right: -100px;
+    width: 500px; height: 500px;
+    background: radial-gradient(circle, rgba(14,165,233,0.06) 0%, transparent 70%);
+    pointer-events: none; z-index: 0;
+    animation: drift2 18s ease-in-out infinite alternate;
+  }
+  @keyframes drift2 { from{transform:translate(0,0)} to{transform:translate(-200px,-150px)} }
+
+  header {
+    position: relative; z-index: 10;
+    padding: 20px 40px;
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    background: rgba(5,10,20,0.85);
+    backdrop-filter: blur(20px);
+  }
+  .logo { display: flex; align-items: center; gap: 14px; }
+  .logo-icon {
+    width: 42px; height: 42px;
+    background: linear-gradient(135deg, var(--teal), var(--blue));
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+  }
+  .logo-text { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+  .logo-text span { color: var(--teal); }
+  .header-right { display: flex; align-items: center; gap: 16px; }
+  .header-badge {
+    font-family: var(--font-mono); font-size: 11px; color: var(--teal);
+    border: 1px solid rgba(0,212,184,0.3); padding: 5px 14px; border-radius: 20px;
+    background: rgba(0,212,184,0.06); display: flex; align-items: center; gap: 8px;
+  }
+  .pulse-dot {
+    width: 7px; height: 7px; background: var(--teal); border-radius: 50%;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.7)} }
+  .model-status {
+    font-family: var(--font-mono); font-size: 11px; padding: 5px 14px;
+    border-radius: 20px; border: 1px solid;
+  }
+  .model-status.ok { color: var(--green); border-color: rgba(16,185,129,.3); background: rgba(16,185,129,.06); }
+  .model-status.err { color: var(--red); border-color: rgba(239,68,68,.3); background: rgba(239,68,68,.06); }
+  .model-status.checking { color: var(--muted); border-color: var(--border); }
+
+  main {
+    position: relative; z-index: 5;
+    max-width: 1400px; margin: 0 auto;
+    padding: 36px 40px;
+    display: grid; gap: 24px;
+  }
+
+  /* hero */
+  .hero { text-align: center; padding: 20px 20px 10px; }
+  .hero-tag {
+    display: inline-block; font-family: var(--font-mono); font-size: 11px;
+    letter-spacing: 3px; color: var(--teal); text-transform: uppercase;
+    margin-bottom: 14px; opacity: 0;
+    animation: fadeUp .6s ease forwards .2s;
+  }
+  .hero h1 {
+    font-size: clamp(32px, 4vw, 56px); font-weight: 800;
+    letter-spacing: -2px; line-height: 1.05;
+    opacity: 0; animation: fadeUp .6s ease forwards .4s;
+  }
+  .hero h1 .glow {
+    background: linear-gradient(90deg, var(--teal), var(--blue));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  }
+  .hero p {
+    margin-top: 14px; color: var(--muted); font-size: 15px;
+    max-width: 520px; margin-left: auto; margin-right: auto;
+    opacity: 0; animation: fadeUp .6s ease forwards .6s;
+  }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+
+  /* stats */
+  .stats-row {
+    display: grid; grid-template-columns: repeat(4,1fr); gap: 16px;
+    opacity: 0; animation: fadeUp .6s ease forwards .8s;
+  }
+  .stat-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 16px; padding: 20px 22px; position: relative; overflow: hidden;
+    transition: transform .2s, border-color .2s;
+  }
+  .stat-card:hover { transform: translateY(-4px); border-color: rgba(0,212,184,.4); }
+  .stat-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, var(--teal), var(--blue));
+  }
+  .stat-label { font-family: var(--font-mono); font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  .stat-value { font-size: 26px; font-weight: 800; letter-spacing: -1px; }
+  .stat-value.teal { color: var(--teal); }
+  .stat-value.blue { color: var(--blue); }
+  .stat-value.amber { color: var(--amber); }
+  .stat-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+  /* input */
+  .input-section {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 20px; padding: 28px;
+    opacity: 0; animation: fadeUp .6s ease forwards 1s;
+  }
+  .section-title {
+    font-size: 12px; font-family: var(--font-mono); letter-spacing: 3px;
+    text-transform: uppercase; color: var(--teal); margin-bottom: 18px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .section-title::after { content: ''; flex: 1; height: 1px; background: linear-gradient(90deg, var(--border), transparent); }
+
+  .metar-grid { display: grid; grid-template-columns: repeat(6,1fr); gap: 8px; margin-bottom: 20px; }
+  .metar-slot {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 12px;
+    transition: border-color .2s;
+  }
+  .metar-slot:focus-within { border-color: var(--teal); }
+  .metar-slot label {
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: 2px; color: var(--muted);
+    text-transform: uppercase; display: block; margin-bottom: 5px;
+  }
+  .metar-slot input {
+    width: 100%; background: none; border: none; outline: none;
+    color: var(--text); font-family: var(--font-mono); font-size: 11px;
+    caret-color: var(--teal);
+  }
+  .metar-slot input::placeholder { color: rgba(90,122,154,.5); }
+
+  .controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .datetime-input {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 11px 16px; flex: 1; min-width: 260px;
+  }
+  .datetime-input:focus-within { border-color: rgba(0,212,184,.4); }
+  .datetime-input label { font-family: var(--font-mono); font-size: 9px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; white-space: nowrap; }
+  .datetime-input input {
+    background: none; border: none; outline: none;
+    color: var(--text); font-family: var(--font-mono); font-size: 13px;
+    flex: 1; caret-color: var(--teal); color-scheme: dark;
+  }
+
+  .btn {
+    padding: 12px 24px; border-radius: 10px; font-family: var(--font-display);
+    font-size: 14px; font-weight: 700; cursor: pointer; border: none;
+    display: flex; align-items: center; gap: 8px; transition: all .15s; white-space: nowrap;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--teal), var(--blue));
+    color: var(--bg);
+  }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(0,212,184,.35); }
+  .btn-primary:active { transform: translateY(0); }
+  .btn-primary:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow: none; }
+  .btn-secondary {
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--muted);
+  }
+  .btn-secondary:hover { border-color: var(--teal); color: var(--teal); }
+  .btn-clear { background: none; border: 1px solid rgba(239,68,68,.3); color: var(--red); }
+  .btn-clear:hover { background: rgba(239,68,68,.08); }
+
+  .spin {
+    width: 14px; height: 14px; border: 2px solid rgba(0,0,0,.3);
+    border-top-color: var(--bg); border-radius: 50%;
+    animation: spin .7s linear infinite; display: none;
+  }
+  @keyframes spin { to{transform:rotate(360deg)} }
+
+  /* results */
+  .results-section { display: none; }
+  .results-section.visible { display: grid; gap: 20px; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+  .panel {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 18px; padding: 24px;
+    animation: fadeUp .5s ease forwards;
+  }
+
+  /* chart */
+  .chart-wrap { position: relative; height: 250px; margin-top: 14px; }
+
+  /* conditions */
+  .cond-vis { font-size: 48px; font-weight: 800; letter-spacing: -2px; margin: 8px 0 6px; }
+  .vis-tag {
+    display: inline-block; font-size: 11px; padding: 3px 12px;
+    border-radius: 6px; font-weight: 700; letter-spacing: .5px; margin-bottom: 16px;
+  }
+  .tag-fog    { background:rgba(239,68,68,.15);   color:var(--red); }
+  .tag-low    { background:rgba(245,158,11,.15);  color:var(--amber); }
+  .tag-mod    { background:rgba(14,165,233,.15);  color:var(--blue); }
+  .tag-good   { background:rgba(0,212,184,.15);   color:var(--teal); }
+  .tag-excel  { background:rgba(16,185,129,.15);  color:var(--green); }
+
+  .sky-bar { height: 6px; border-radius: 4px; margin-top: 6px;
+    background: linear-gradient(90deg,#ef4444 0%,#f59e0b 20%,#0ea5e9 40%,#00d4b8 70%,#10b981 100%);
+    position: relative;
+  }
+  .sky-marker {
+    position: absolute; top: -4px; width: 14px; height: 14px;
+    background: white; border-radius: 50%; transform: translateX(-50%);
+    box-shadow: 0 0 0 3px var(--bg), 0 0 0 5px var(--teal);
+    transition: left 1s cubic-bezier(.34,1.56,.64,1);
+  }
+  .sky-labels { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 9px; color: var(--muted); margin-top: 8px; }
+
+  .cond-chips { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-top: 20px; }
+  .chip {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 12px;
+  }
+  .chip-label { font-family: var(--font-mono); font-size: 9px; color: var(--muted); margin-bottom: 4px; }
+  .chip-val { font-size: 15px; font-weight: 700; font-family: var(--font-mono); }
+
+  /* table */
+  .table-scroll { max-height: 340px; overflow-y: auto; margin-top: 14px; }
+  .table-scroll::-webkit-scrollbar { width: 4px; }
+  .table-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: 2px;
+    text-transform: uppercase; color: var(--muted); padding: 8px 12px;
+    text-align: left; border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; background: var(--card);
+  }
+  td { padding: 9px 12px; font-family: var(--font-mono); font-size: 12px; border-bottom: 1px solid rgba(30,58,95,.4); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(0,212,184,.03); }
+
+  .bar-track { flex: 1; height: 4px; background: var(--border); border-radius: 4px; overflow: hidden; min-width: 80px; }
+  .bar-fill { height: 100%; border-radius: 4px; transition: width .8s cubic-bezier(.34,1.56,.64,1); }
+  .bar-fog   { background: var(--red); }
+  .bar-low   { background: var(--amber); }
+  .bar-mod   { background: var(--blue); }
+  .bar-good  { background: var(--teal); }
+  .bar-excel { background: var(--green); }
+
+  /* tooltip */
+  .tooltip {
+    position: fixed; background: var(--card); border: 1px solid var(--teal);
+    border-radius: 10px; padding: 8px 14px; pointer-events: none;
+    z-index: 9999; font-family: var(--font-mono); font-size: 12px;
+    white-space: nowrap; display: none; box-shadow: 0 4px 20px rgba(0,0,0,.4);
+  }
+
+  /* toast */
+  .toast {
+    position: fixed; bottom: 24px; right: 24px;
+    padding: 12px 20px; border-radius: 12px; font-family: var(--font-mono);
+    font-size: 12px; z-index: 9999; display: none; backdrop-filter: blur(10px);
+    animation: fadeUp .3s ease;
+  }
+
+  /* error panel */
+  .error-panel {
+    background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.3);
+    border-radius: 14px; padding: 20px 24px;
+    font-family: var(--font-mono); color: var(--red); font-size: 13px;
+    display: none;
+  }
+  .error-panel.show { display: block; animation: fadeUp .3s ease; }
+
+  /* pipeline */
+  .pipeline {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 18px; padding: 28px;
+    opacity: 0; animation: fadeUp .6s ease forwards 1.2s;
+  }
+  .pipeline-steps { display: grid; grid-template-columns: repeat(5,1fr); gap: 0; position: relative; margin-top: 20px; }
+  .pipeline-steps::before {
+    content: ''; position: absolute; top: 30px; left: 10%; right: 10%;
+    height: 2px; background: linear-gradient(90deg, var(--teal), var(--blue), var(--teal)); z-index: 0;
+  }
+  .step { display: flex; flex-direction: column; align-items: center; gap: 12px; position: relative; z-index: 1; padding: 0 6px; }
+  .step-icon {
+    width: 60px; height: 60px; border-radius: 50%;
+    background: var(--surface); border: 2px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; transition: border-color .3s, background .3s; position: relative;
+    cursor: default;
+  }
+  .step:hover .step-icon { border-color: var(--teal); background: rgba(0,212,184,.08); }
+  .step-num {
+    position: absolute; top: -5px; right: -5px;
+    width: 20px; height: 20px; background: var(--teal); color: var(--bg);
+    border-radius: 50%; font-size: 9px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; font-family: var(--font-mono);
+  }
+  .step-title { font-size: 13px; font-weight: 700; text-align: center; }
+  .step-desc { font-size: 10px; color: var(--muted); text-align: center; line-height: 1.6; font-family: var(--font-mono); }
+
+  @media (max-width: 1024px) {
+    .metar-grid { grid-template-columns: repeat(4,1fr); }
+    .two-col { grid-template-columns: 1fr; }
+    .pipeline-steps { grid-template-columns: repeat(3,1fr); gap: 20px; }
+    .pipeline-steps::before { display: none; }
+    .stats-row { grid-template-columns: repeat(2,1fr); }
+  }
+  @media (max-width: 640px) {
+    main { padding: 16px; }
+    header { padding: 14px 16px; }
+    .metar-grid { grid-template-columns: repeat(2,1fr); }
+    .stats-row { grid-template-columns: repeat(2,1fr); }
+    .controls { flex-direction: column; }
+    .btn { width: 100%; justify-content: center; }
+    .pipeline-steps { grid-template-columns: repeat(2,1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="orb2"></div>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">🛫</div>
+    <div>
+      <div class="logo-text"><span>VIDP</span> Forecast</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="model-status checking" id="model-status">⏳ checking models...</div>
+    <div class="header-badge">
+      <div class="pulse-dot"></div>
+      NEW DELHI / PALAM
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="hero">
+    <div class="hero-tag">// AI-POWERED WEATHER INTELLIGENCE</div>
+    <h1>Visibility <span class="glow">Forecast</span><br>for VIDP Airport</h1>
+    <p>Paste 12 recent METARs, hit Run — get 24-hour hourly visibility predictions from your LightGBM model, live.</p>
+  </div>
+
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-label">// training data</div>
+      <div class="stat-value teal">~120K</div>
+      <div class="stat-sub">METAR records · 2020–2026</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">// models loaded</div>
+      <div class="stat-value blue" id="stat-models">—</div>
+      <div class="stat-sub">t+1 to t+24 hour steps</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">// validation MAE</div>
+      <div class="stat-value amber">~680m</div>
+      <div class="stat-sub">Mean absolute error · 24 Apr 2026</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">// algorithm</div>
+      <div class="stat-value" style="font-size:18px">LightGBM</div>
+      <div class="stat-sub">800 trees · lr 0.03 · 64 leaves</div>
+    </div>
+  </div>
+
+  <!-- Pipeline -->
+  <div class="pipeline">
+    <div class="section-title">// end-to-end pipeline</div>
+    <div class="pipeline-steps">
+      <div class="step">
+        <div class="step-icon"><span class="step-num">1</span>🌐</div>
+        <div class="step-title">Extract</div>
+        <div class="step-desc">Ogimet scraper<br>73 months METAR</div>
+      </div>
+      <div class="step">
+        <div class="step-icon"><span class="step-num">2</span>⚙️</div>
+        <div class="step-title">Parse</div>
+        <div class="step-desc">vis · wind · temp<br>fog · mist flags</div>
+      </div>
+      <div class="step">
+        <div class="step-icon"><span class="step-num">3</span>🧠</div>
+        <div class="step-title">Train</div>
+        <div class="step-desc">24 LightGBM<br>lag feature models</div>
+      </div>
+      <div class="step">
+        <div class="step-icon"><span class="step-num">4</span>🔮</div>
+        <div class="step-title">Predict</div>
+        <div class="step-desc">12 METARs in →<br>24hr forecast out</div>
+      </div>
+      <div class="step">
+        <div class="step-icon"><span class="step-num">5</span>✅</div>
+        <div class="step-title">Validate</div>
+        <div class="step-desc">vs actual METARs<br>MAE · RMSE · plot</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Input -->
+  <div class="input-section">
+    <div class="section-title">// metar input — paste 12 recent reports (oldest → newest)</div>
+    <div class="metar-grid" id="metar-grid"></div>
+    <div class="controls">
+      <div class="datetime-input">
+        <label>latest metar time (IST)</label>
+        <input type="datetime-local" id="latest-time" value="2026-04-27T11:00">
+      </div>
+      <button class="btn btn-secondary" onclick="loadSample()">📋 Load Sample</button>
+      <button class="btn btn-clear" onclick="clearAll()">✕ Clear</button>
+      <button class="btn btn-primary" id="run-btn" onclick="runForecast()">
+        <span class="spin" id="spin"></span>
+        <span id="btn-text">Run Forecast →</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Error -->
+  <div class="error-panel" id="error-panel"></div>
+
+  <!-- Results -->
+  <div class="results-section" id="results">
+    <div class="two-col">
+      <div class="panel">
+        <div class="section-title">// 24-hour visibility forecast</div>
+        <div class="chart-wrap" id="chart-wrap"></div>
+      </div>
+      <div class="panel">
+        <div class="section-title">// current conditions</div>
+        <div id="conditions-panel"></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="section-title">// hourly breakdown</div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Step</th>
+              <th>Time (IST)</th>
+              <th>Visibility</th>
+              <th>Condition</th>
+              <th>Scale</th>
+            </tr>
+          </thead>
+          <tbody id="table-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div class="tooltip" id="tooltip"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const SAMPLE = [
+  "METAR VIDP 270000Z 25003KT 3000 HZ NSC 29/13 Q1003 NOSIG=",
+  "METAR VIDP 270030Z 27003KT 2500 HZ FEW100 29/12 Q1003 NOSIG=",
+  "METAR VIDP 270100Z 26003KT 2200 HZ FEW100 29/13 Q1003 NOSIG=",
+  "METAR VIDP 270130Z 26005KT 2200 HZ FEW100 29/15 Q1003 NOSIG=",
+  "METAR VIDP 270200Z 24005KT 2000 HZ FEW100 30/13 Q1004 NOSIG=",
+  "METAR VIDP 270230Z 26006KT 2000 HZ FEW100 32/12 Q1004 NOSIG=",
+  "METAR VIDP 270300Z 26006KT 2300 HZ FEW100 33/12 Q1004 NOSIG=",
+  "METAR VIDP 270330Z 27004KT 2300 HZ FEW100 34/12 Q1004 NOSIG=",
+  "METAR VIDP 270400Z 27004KT 2500 HZ NSC 35/12 Q1004 NOSIG=",
+  "METAR VIDP 270430Z 30005KT 2800 HZ NSC 37/12 Q1004 NOSIG=",
+  "METAR VIDP 270500Z 32007KT 3500 HZ NSC 38/11 Q1004 NOSIG=",
+  "METAR VIDP 270530Z 30006KT 4000 HZ NSC 38/10 Q1004 NOSIG=",
+];
+
+// build input slots
+const grid = document.getElementById('metar-grid');
+for (let i = 0; i < 12; i++) {
+  grid.innerHTML += `<div class="metar-slot">
+    <label>METAR ${String(i+1).padStart(2,'0')}</label>
+    <input id="m${i}" type="text" placeholder="METAR VIDP DDHHMMZ ...">
+  </div>`;
+}
+
+function loadSample() {
+  SAMPLE.forEach((m,i) => document.getElementById(`m${i}`).value = m);
+  document.getElementById('latest-time').value = '2026-04-27T11:00';
+  toast('📋 Sample data loaded', 'ok');
+}
+
+function clearAll() {
+  for (let i = 0; i < 12; i++) document.getElementById(`m${i}`).value = '';
+  document.getElementById('results').classList.remove('visible');
+  hideError();
+}
+
+// ── Check server health ───────────────────────────────────────────────────────
+async function checkHealth() {
+  try {
+    const r = await fetch('/predict', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ metars: SAMPLE, latest_ist: '2026-04-27T11:00' })
+    });
+    const d = await r.json();
+    if (d.forecast) {
+      document.getElementById('model-status').className = 'model-status ok';
+      document.getElementById('model-status').textContent = '✅ 24 models ready';
+      document.getElementById('stat-models').textContent = '24';
+    } else {
+      throw new Error(d.error);
+    }
+  } catch(e) {
+    document.getElementById('model-status').className = 'model-status err';
+    document.getElementById('model-status').textContent = '❌ server offline';
+    document.getElementById('stat-models').textContent = 'ERR';
+  }
+}
+checkHealth();
+
+// ── Run forecast ──────────────────────────────────────────────────────────────
+async function runForecast() {
+  const metars = [];
+  for (let i = 0; i < 12; i++) {
+    const v = document.getElementById(`m${i}`).value.trim();
+    if (!v) { showError(`METAR ${i+1} is empty — fill all 12 slots`); return; }
+    metars.push(v);
+  }
+  const latest_ist = document.getElementById('latest-time').value;
+  if (!latest_ist) { showError('Please set the latest METAR timestamp'); return; }
+
+  setLoading(true);
+  hideError();
+
+  try {
+    const res = await fetch('/predict', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ metars, latest_ist })
+    });
+
+    const data = await res.json();
+
+    if (!res.ok || data.error) {
+      throw new Error(data.error || 'Server error');
+    }
+
+    render(data.forecast, data.current, latest_ist);
+    toast('✅ Forecast complete — 24 steps generated', 'ok');
+
+  } catch(e) {
+    showError('❌ ' + e.message);
+  } finally {
+    setLoading(false);
+  }
+}
+
+function setLoading(on) {
+  const btn = document.getElementById('run-btn');
+  const spin = document.getElementById('spin');
+  const txt = document.getElementById('btn-text');
+  btn.disabled = on;
+  spin.style.display = on ? 'block' : 'none';
+  txt.textContent = on ? 'Computing...' : 'Run Forecast →';
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function render(forecast, current, latest_ist) {
+  document.getElementById('results').classList.add('visible');
+  renderConditions(current, latest_ist);
+  renderChart(forecast);
+  renderTable(forecast);
+}
+
+function visClass(v) {
+  if (v < 600)  return { label:'FOG',       cls:'fog',   tag:'tag-fog'   };
+  if (v < 1500) return { label:'LOW VIS',   cls:'low',   tag:'tag-low'   };
+  if (v < 3000) return { label:'MODERATE',  cls:'mod',   tag:'tag-mod'   };
+  if (v < 6000) return { label:'GOOD',      cls:'good',  tag:'tag-good'  };
+  return               { label:'EXCELLENT', cls:'excel', tag:'tag-excel' };
+}
+
+function renderConditions(c, latest_ist) {
+  const vis = c.vis ?? 4000;
+  const vc = visClass(vis);
+  const pct = Math.min(100, (vis / 9999) * 100);
+  const month = new Date(latest_ist).toLocaleString('en',{month:'short'});
+
+  document.getElementById('conditions-panel').innerHTML = `
+    <div class="cond-vis">${vis.toLocaleString()}<span style="font-size:18px;color:var(--muted);font-weight:400"> m</span></div>
+    <span class="vis-tag ${vc.tag}">${vc.label}</span>
+    <div class="sky-bar"><div class="sky-marker" style="left:${pct}%"></div></div>
+    <div class="sky-labels"><span>FOG</span><span>LOW</span><span>MOD</span><span>GOOD</span><span>EXCEL</span></div>
+    <div class="cond-chips">
+      ${chip('💨 Wind', c.wind != null ? c.wind+' KT' : '--')}
+      ${chip('🌡 Temp', c.temp != null ? c.temp+'°C' : '--')}
+      ${chip('💧 Dew', c.dew  != null ? c.dew+'°C'  : '--')}
+      ${chip('🌫 Fog',  c.fog  ? 'YES':'NO',  c.fog  ? 'var(--red)':'')}
+      ${chip('🌁 Mist', c.mist ? 'YES':'NO',  c.mist ? 'var(--amber)':'')}
+      ${chip('📅 Month', month)}
+    </div>`;
+}
+
+function chip(label, value, color='') {
+  return `<div class="chip">
+    <div class="chip-label">${label}</div>
+    <div class="chip-val" style="color:${color||'var(--text)'}">${value}</div>
+  </div>`;
+}
+
+function renderChart(forecast) {
+  const wrap = document.getElementById('chart-wrap');
+  const W = wrap.clientWidth || 560;
+  const H = 240;
+  const pad = {top:16, right:16, bottom:36, left:48};
+  const cw = W - pad.left - pad.right;
+  const ch = H - pad.top - pad.bottom;
+  const vals = forecast.map(f => f.visibility);
+  const maxV = Math.max(...vals, 6000);
+  const minV = Math.max(0, Math.min(...vals) - 500);
+  const range = maxV - minV || 1;
+  const sx = i => pad.left + (i / (vals.length-1)) * cw;
+  const sy = v => pad.top + ch - ((v-minV)/range)*ch;
+
+  const pts = vals.map((v,i) => [sx(i), sy(v)]);
+  const path = pts.map((p,i) => `${i?'L':'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+  const area = path + ` L${sx(vals.length-1)},${pad.top+ch} L${sx(0)},${pad.top+ch} Z`;
+
+  const grid = [0,2000,4000,6000,8000].filter(v => v >= minV-200 && v <= maxV+200).map(v => {
+    const y = sy(v);
+    return `<line x1="${pad.left}" y1="${y.toFixed(1)}" x2="${W-pad.right}" y2="${y.toFixed(1)}"
+      stroke="rgba(30,58,95,.8)" stroke-width="1" stroke-dasharray="4,4"/>
+      <text x="${pad.left-5}" y="${(y+3).toFixed(1)}" text-anchor="end"
+        font-family="Space Mono" font-size="9" fill="#5a7a9a">${(v/1000).toFixed(0)}K</text>`;
+  }).join('');
+
+  const xlabels = vals.map((_,i) => {
+    if (i % 4 !== 0) return '';
+    const t = forecast[i].time.split(' ')[1];
+    return `<text x="${sx(i).toFixed(1)}" y="${H-4}" text-anchor="middle"
+      font-family="Space Mono" font-size="9" fill="#5a7a9a">${t}</text>`;
+  }).join('');
+
+  const colorMap = {fog:'#ef4444',low:'#f59e0b',mod:'#0ea5e9',good:'#00d4b8',excel:'#10b981'};
+  const dots = pts.map(([x,y],i) => {
+    const vc = visClass(vals[i]);
+    return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4"
+      fill="${colorMap[vc.cls]}" stroke="#050a14" stroke-width="2"
+      class="dot" data-i="${i}"/>`;
+  }).join('');
+
+  wrap.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:100%;overflow:visible">
+    <defs>
+      <linearGradient id="ag" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#00d4b8" stop-opacity=".22"/>
+        <stop offset="100%" stop-color="#00d4b8" stop-opacity="0"/>
+      </linearGradient>
+      <linearGradient id="lg" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#00d4b8"/>
+        <stop offset="100%" stop-color="#0ea5e9"/>
+      </linearGradient>
+    </defs>
+    ${grid}
+    <path d="${area}" fill="url(#ag)"/>
+    <path d="${path}" fill="none" stroke="url(#lg)" stroke-width="2.5" stroke-linejoin="round"/>
+    ${dots}
+    ${xlabels}
+  </svg>`;
+
+  const tip = document.getElementById('tooltip');
+  wrap.querySelectorAll('.dot').forEach(d => {
+    const i = +d.dataset.i;
+    d.addEventListener('mouseenter', () => {
+      tip.innerHTML = `<span style="color:var(--teal)">${forecast[i].time}</span>  ${forecast[i].visibility.toLocaleString()} m`;
+      tip.style.display = 'block';
+    });
+    d.addEventListener('mousemove', e => {
+      tip.style.left = (e.clientX+14)+'px';
+      tip.style.top  = (e.clientY-32)+'px';
+    });
+    d.addEventListener('mouseleave', () => tip.style.display = 'none');
+  });
+}
+
+function renderTable(forecast) {
+  const maxV = Math.max(...forecast.map(f=>f.visibility));
+  document.getElementById('table-body').innerHTML = forecast.map(f => {
+    const vc = visClass(f.visibility);
+    const pct = Math.min(100, (f.visibility/maxV)*100);
+    const bmap = {fog:'bar-fog',low:'bar-low',mod:'bar-mod',good:'bar-good',excel:'bar-excel'};
+    return `<tr>
+      <td style="color:var(--muted)">t+${f.step}h</td>
+      <td>${f.time}</td>
+      <td style="font-weight:700">${f.visibility.toLocaleString()} m</td>
+      <td><span class="vis-tag ${vc.tag}" style="font-size:10px">${vc.label}</span></td>
+      <td><div class="bar-track"><div class="bar-fill ${bmap[vc.cls]}" style="width:${pct}%"></div></div></td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function showError(msg) {
+  const el = document.getElementById('error-panel');
+  el.textContent = msg;
+  el.classList.add('show');
+}
+function hideError() {
+  document.getElementById('error-panel').classList.remove('show');
+}
+function toast(msg, type='ok') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.cssText = type === 'ok'
+    ? 'background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.4);color:#10b981;display:block'
+    : 'background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.4);color:#ef4444;display:block';
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.style.display = 'none', 3500);
+}
+</script>
+</body>
+</html>
